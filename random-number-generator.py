@@ -1,5 +1,10 @@
 import numpy as np
-from config import AVERAGE_USERS, RANDOM_SEED, USER_STD_DEV
+from config import (
+    AVERAGE_USERS,
+    RANDOM_SEED,
+    SERVER_FAILURE_PROBABILITIES,
+    USER_STD_DEV,
+)
 
 
 class RandomNumberGenerator:
@@ -23,3 +28,15 @@ class RandomNumberGenerator:
     def generate_users(self) -> float:
         """Generate a random user count based on the user distribution."""
         return max(0.0, self.generate_normal())
+
+    def generate_server_failures(
+        self, failure_probs: list[float] = SERVER_FAILURE_PROBABILITIES
+    ) -> list[bool]:
+        """Generate failure status (True if failed) for each server in the list."""
+        return [bool(self.rng.random() < p) for p in failure_probs]
+
+    def generate_failures(
+        self, failure_probs: list[float] = SERVER_FAILURE_PROBABILITIES
+    ) -> int:
+        """Generate total count of failed servers."""
+        return sum(self.generate_server_failures(failure_probs))

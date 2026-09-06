@@ -17,11 +17,12 @@ class MonteCarloEngine:
         results = []
 
         for i in range(1, iterations + 1):
-            # Generate random input
+            # Generate random inputs: user count and server failure status list
             users = self.generator.generate_users()
+            server_failures = self.generator.generate_server_failures()
 
             # Run the model
-            result = self.model.run(users)
+            result = self.model.run(users, server_failures=server_failures)
 
             # Store result
             results.append(result)

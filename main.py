@@ -1,5 +1,5 @@
 import importlib
-from config import ITERATIONS
+from config import ITERATIONS, NUMBER_OF_SERVERS
 from engine import MonteCarloEngine
 from metrics import MetricsCalculator
 from model import CloudModel
@@ -27,13 +27,13 @@ def main():
 
     def live_callback(result: dict, current_iteration: int, total_iterations: int):
         visualizer.update_live_plot(
-            current_cost=result["cost"],
+            result=result,
             iteration=current_iteration,
             total_iterations=total_iterations,
         )
 
     # 3. Run Monte Carlo simulation with live visualization
-    print(f"Running simulation for {ITERATIONS:,} iterations...")
+    print(f"Running simulation for {ITERATIONS:,} iterations ({NUMBER_OF_SERVERS} servers)...")
     results = engine.run(iterations=ITERATIONS, callback=live_callback)
 
     # 4. Calculate metrics
@@ -42,12 +42,22 @@ def main():
     print("\n" + "=" * 60)
     print("  SIMULATION RESULTS & METRICS SUMMARY")
     print("=" * 60)
-    print(f"Total Iterations : {len(results):,}")
-    print(f"Average Cost     : ${metrics['average']:,.2f}")
-    print(f"Median Cost      : ${metrics['median']:,.2f}")
-    print(f"Minimum Cost     : ${metrics['minimum']:,.2f}")
-    print(f"Maximum Cost     : ${metrics['maximum']:,.2f}")
-    print(f"95th Percentile  : ${metrics['p95']:,.2f}")
+    print(f"Total Iterations     : {len(results):,}")
+    print(f"Number of Servers    : {NUMBER_OF_SERVERS}")
+    print(f"Average Cost         : ${metrics['average']:,.2f}")
+    print(f"Median Cost          : ${metrics['median']:,.2f}")
+    print(f"Minimum Cost         : ${metrics['minimum']:,.2f}")
+    print(f"Maximum Cost         : ${metrics['maximum']:,.2f}")
+    print(f"95th Percentile Cost : ${metrics['p95']:,.2f}")
+    print(f"System Failure Rate  : {metrics['system_failure_rate'] * 100:.2f}%")
+    print(f"Avg Failed Servers   : {metrics['avg_failed_servers']:.2f}")
+    print(f"Avg Dropped Requests : {metrics['avg_dropped_requests']:,.0f}")
+    print(f"Max Dropped Requests : {metrics['max_dropped_requests']:,.0f}")
+
+    print("\n--- Per-Server Failures Breakdown ---")
+    for s_name, f_cnt in metrics["per_server_failures"].items():
+        fail_pct = (f_cnt / len(results)) * 100
+        print(f"  {s_name:10s} : {f_cnt:,} failures ({fail_pct:.2f}%)")
     print("=" * 60)
 
     # 5. Keep final visualization graph displayed
