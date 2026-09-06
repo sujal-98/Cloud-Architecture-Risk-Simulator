@@ -1,8 +1,9 @@
 import numpy as np
 from config import (
     AVERAGE_USERS,
+    MIN_SERVERS,
     RANDOM_SEED,
-    SERVER_FAILURE_PROBABILITIES,
+    SERVER_FAILURE_PROBABILITY,
     USER_STD_DEV,
 )
 
@@ -29,14 +30,27 @@ class RandomNumberGenerator:
         """Generate a random user count based on the user distribution."""
         return max(0.0, self.generate_normal())
 
-    def generate_server_failures(
-        self, failure_probs: list[float] = SERVER_FAILURE_PROBABILITIES
-    ) -> list[bool]:
-        """Generate failure status (True if failed) for each server in the list."""
-        return [bool(self.rng.random() < p) for p in failure_probs]
+    def generate_diurnal_traffic(
+        self,
+        hour: int,
+        base_users: float = AVERAGE_USERS,
+        std_dev: float = USER_STD_DEV,
+        peak_hour: int = 14,
+    ) -> float:
+        """Generate hourly user count with a 24-hour diurnal sinusoidal curve and random noise."""
+        # Sinusoidal diurnal factor: ranges between ~0.5 (off-peak night) and ~1.5 (mid-day peak)
+        diurnal_factor = 1.0 + 0.5 * np.sin((hour - (peak_hour - 6)) * (2 * np.pi / 24))
+        hourly_mean = base_users * diurnal_factor
+        return max(0.0, float(self.rng.normal(loc=hourly_mean, scale=std_dev)))
 
-    def generate_failures(
-        self, failure_probs: list[float] = SERVER_FAILURE_PROBABILITIES
-    ) -> int:
-        """Generate total count of failed servers."""
-        return sum(self.generate_server_failures(failure_probs))
+    def generate_server_failures(
+        self,
+        num_servers: int = MIN_SERVERS,
+        failure_prob: float = SERVER_FAILURE_PROBABILITY,
+    ) -> list[bool]:
+        """Generate failure status (True if failed) for N servers."""
+        return [bool(self.rng.random() < failure_prob) for _ in range(num_servers)]
+
+    def is_server_failed(self, failure_prob: float = SERVER_FAILURE_PROBABILITY) -> bool:
+        """Determine if a single dynamically added server fails."""
+        return bool(self.rng.random() < failure_prob)

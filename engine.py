@@ -1,9 +1,9 @@
 from typing import Callable, Optional
-from config import ITERATIONS
+from config import SIMULATIONS
 
 
 class MonteCarloEngine:
-    """Orchestrates Monte Carlo simulations using a generator and a model."""
+    """Orchestrates time-stepped Monte Carlo simulations using a generator and a model."""
 
     def __init__(self, generator, model) -> None:
         self.generator = generator
@@ -11,24 +11,20 @@ class MonteCarloEngine:
 
     def run(
         self,
-        iterations: int = ITERATIONS,
+        simulations: int = SIMULATIONS,
         callback: Optional[Callable[[dict, int, int], None]] = None,
     ) -> list[dict]:
         results = []
 
-        for i in range(1, iterations + 1):
-            # Generate random inputs: user count and server failure status list
-            users = self.generator.generate_users()
-            server_failures = self.generator.generate_server_failures()
+        for sim_idx in range(1, simulations + 1):
+            # Run a full 24-hour time-stepped simulation day
+            result = self.model.run_day(rng=self.generator)
 
-            # Run the model
-            result = self.model.run(users, server_failures=server_failures)
-
-            # Store result
+            # Store simulation day result
             results.append(result)
 
             # Trigger live update callback if provided
             if callback:
-                callback(result, i, iterations)
+                callback(result, sim_idx, simulations)
 
         return results
