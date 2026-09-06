@@ -1,88 +1,87 @@
-import importlib
 from config import (
-    AUTOSCALE_DOWN_THRESHOLD,
-    AUTOSCALE_UP_THRESHOLD,
-    HOURS_PER_SIMULATION,
-    MAX_SERVERS,
-    MIN_SERVERS,
-    SIMULATIONS,
+    ARRIVAL_RATE,
+    AVG_SERVICE_TIME,
+    NUM_SERVERS,
+    SIMULATION_DURATION,
 )
-from engine import MonteCarloEngine
+from engine import DiscreteEventEngine
+from generator import RequestGenerator
 from metrics import MetricsCalculator
-from model import CloudModel
 from visualization import Visualizer
-
-# Dynamically import module with hyphen in filename
-rng_module = importlib.import_module("random-number-generator")
-RandomNumberGenerator = rng_module.RandomNumberGenerator
 
 
 def main():
     print("=" * 75)
-    print("  Starting 24-Hour Time-Stepped Monte Carlo Cloud Simulation")
+    print("  Discrete-Event Cloud Request Processing Simulator")
+    print("=" * 75)
+    print(f"Simulation Duration : {SIMULATION_DURATION} seconds")
+    print(f"Arrival Rate        : {ARRIVAL_RATE} requests/second")
+    print(f"Avg Service Time    : {AVG_SERVICE_TIME * 1000:.1f} ms")
+    print(f"Server Pool Size    : {NUM_SERVERS} servers")
     print("=" * 75)
 
     # 1. Initialize components
-    generator = RandomNumberGenerator()
-    model = CloudModel()
-    engine = MonteCarloEngine(generator=generator, model=model)
+    generator = RequestGenerator()
+    engine = DiscreteEventEngine(generator=generator, num_servers=NUM_SERVERS)
     metrics_calc = MetricsCalculator()
     visualizer = Visualizer()
 
-    # 2. Print sample 24-hour simulation breakdown for Day #1
-    sample_day = model.run_day(rng=generator)
-    print("\nSample 24-Hour Simulation Timeline (Day #1):")
-    print(f"{'Hour':<6} {'Traffic (Req)':<15} {'Servers':<9} {'Utilization':<13} {'Cost ($)':<10} {'Action':<10}")
-    print("─" * 75)
-    for log in sample_day["hourly_logs"]:
-        print(
-            f"{log['hour']:02d}:00   "
-            f"{log['requests']:11,.0f} req   "
-            f"{log['servers']:<9d} "
-            f"{log['utilization'] * 100:6.1f}%       "
-            f"${log['cost']:<8.2f} "
-            f"{log['action']}"
-        )
-    print("─" * 75)
-
-    # 3. Setup live plotting
+    # 2. Setup live plotting
     visualizer.setup_live_plot()
 
-    def live_callback(result: dict, current_iteration: int, total_iterations: int):
-        visualizer.update_live_plot(
-            result=result,
-            iteration=current_iteration,
-            total_iterations=total_iterations,
-        )
+    def live_callback(event, current_time: float):
+        visualizer.update_live_plot(engine, current_time)
 
-    # 4. Run Monte Carlo simulation across all days
-    print(
-        f"\nRunning Monte Carlo simulation for {SIMULATIONS:,} days "
-        f"({HOURS_PER_SIMULATION} hours/day, Base: {MIN_SERVERS}, Max: {MAX_SERVERS}, "
-        f"Scale Up: >{AUTOSCALE_UP_THRESHOLD*100:.0f}%, Scale Down: <{AUTOSCALE_DOWN_THRESHOLD*100:.0f}%)..."
-    )
-    results = engine.run(simulations=SIMULATIONS, callback=live_callback)
+    # 3. Execute discrete-event simulation engine with live visualization
+    print("\nRunning discrete-event priority queue simulation...")
+    simulation_result = engine.run(step_callback=live_callback)
+
+    # Force final update to ensure full results are rendered
+    visualizer.update_live_plot(engine, engine.current_time, force=True)
+
+    # 4. Print sample event log
+    print("\nSample Event Execution Trace (First 15 Events):")
+    print(f"{'Time (s)':<10} {'Event':<20} {'Req ID':<8} {'Server':<10} {'Latency (ms)':<15}")
+    print("─" * 75)
+    for log in simulation_result["event_log"][:15]:
+        server_str = f"Server {log['server_id']}" if "server_id" in log else "-"
+        latency_str = f"{log['latency']*1000:8.2f} ms" if "latency" in log else "-"
+        print(
+            f"{log['time']:<10.4f} "
+            f"{log['event']:<20} "
+            f"R{log['req_id']:<7d} "
+            f"{server_str:<10} "
+            f"{latency_str:<15}"
+        )
+    print("─" * 75)
 
     # 5. Calculate metrics
-    metrics = metrics_calc.calculate(results)
+    metrics = metrics_calc.calculate(simulation_result)
 
     print("\n" + "=" * 75)
-    print("  TIME-STEPPED SIMULATION METRICS & RELIABILITY SUMMARY")
-    print("=" * 75)
-    print(f"Total Simulated Days  : {len(results):,}")
-    print(f"Hours per Simulation  : {HOURS_PER_SIMULATION}")
-    print(f"Min / Max Servers     : {MIN_SERVERS} / {MAX_SERVERS}")
-    print(f"Average Daily Cost    : ${metrics['average_cost']:,.2f}")
-    print(f"Median Daily Cost     : ${metrics['median_cost']:,.2f}")
-    print(f"95th Percentile Cost  : ${metrics['p95_cost']:,.2f}")
-    print(f"Outage Probability    : {metrics['system_failure_rate'] * 100:.2f}% (Days with dropped requests)")
-    print(f"Avg Servers Provisioned: {metrics['avg_servers_used']:.2f}")
-    print(f"Max Servers Required   : {metrics['max_servers_required']}")
-    print(f"Avg Hourly Utilization : {metrics['avg_utilization'] * 100:.1f}%")
-    print(f"Avg Dropped Req / Day  : {metrics['avg_dropped_requests']:,.0f}")
+    print("  SIMULATION METRICS & LATENCY SUMMARY")
+    print("=" * 60)
+    print(f"Total Requests Processed : {metrics['total_completed']:,}")
+    print(f"Total Requests Dropped   : {metrics['total_dropped']:,}")
+    print(f"Throughput               : {metrics['throughput_req_per_sec']:.2f} requests/sec")
+    print(f"Overall Cluster Util.    : {metrics['overall_utilization_pct']:.2f}%")
+    print("─" * 75)
+    print(f"Average Latency          : {metrics['avg_latency']*1000:.2f} ms")
+    print(f"P50 Latency (Median)     : {metrics['p50_latency']*1000:.2f} ms")
+    print(f"P95 Latency              : {metrics['p95_latency']*1000:.2f} ms")
+    print(f"P99 Latency              : {metrics['p99_latency']*1000:.2f} ms")
+    print(f"Max Latency              : {metrics['max_latency']*1000:.2f} ms")
+    print("─" * 75)
+    print(f"Average Waiting Time     : {metrics['avg_waiting_time']*1000:.2f} ms")
+    print(f"P95 Waiting Time         : {metrics['p95_waiting_time']*1000:.2f} ms")
+    print(f"Max Queue Depth          : {metrics['max_queue_depth']} requests")
+    print("─" * 75)
+    print("Per-Server Utilization:")
+    for s_name, s_info in metrics["per_server_stats"].items():
+        print(f"  {s_name}: Processed {s_info['processed']:,} requests ({s_info['utilization']:.1f}% busy)")
     print("=" * 75)
 
-    # 6. Keep final visualization graph displayed
+    # 6. Hold interactive plot open
     visualizer.finish_live_plot()
 
 

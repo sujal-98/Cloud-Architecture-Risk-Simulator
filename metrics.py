@@ -2,26 +2,62 @@ import numpy as np
 
 
 class MetricsCalculator:
-    """Calculates summary metrics across 24-hour time-stepped simulation runs."""
+    """Calculates performance, latency percentiles, throughput, and utilization for discrete-event simulations."""
 
-    def calculate(self, results: list[dict]) -> dict:
-        costs = [result["total_cost"] for result in results]
-        dropped = [result.get("total_dropped", 0.0) for result in results]
-        avg_servers = [result.get("avg_servers", 3.0) for result in results]
-        max_servers = [result.get("max_servers_needed", 3) for result in results]
-        utilizations = [result.get("avg_utilization", 0.0) for result in results]
-        system_failures = [1 if result.get("system_failed", False) else 0 for result in results]
+    def calculate(self, simulation_result: dict) -> dict:
+        completed = simulation_result["completed_requests"]
+        dropped = simulation_result["dropped_requests"]
+        servers = simulation_result["servers"]
+        queue = simulation_result["queue"]
+        total_time = simulation_result["total_simulation_time"]
+
+        latencies = [r.latency for r in completed]
+        waiting_times = [r.waiting_time for r in completed]
+        service_times = [r.service_time for r in completed]
+
+        num_servers = len(servers)
+        total_busy_time = sum(s.total_busy_time for s in servers)
+        overall_utilization = (
+            total_busy_time / (total_time * num_servers) if total_time > 0 and num_servers > 0 else 0.0
+        )
+        throughput = len(completed) / total_time if total_time > 0 else 0.0
+
+        per_server_stats = {
+            f"Server {s.id}": {
+                "processed": s.total_processed,
+                "busy_time": s.total_busy_time,
+                "utilization": (s.total_busy_time / total_time * 100) if total_time > 0 else 0.0,
+            }
+            for s in servers
+        }
+
+        if not latencies:
+            return {
+                "total_completed": 0,
+                "total_dropped": len(dropped),
+                "throughput_req_per_sec": 0.0,
+                "overall_utilization_pct": 0.0,
+                "per_server_stats": per_server_stats,
+            }
 
         return {
-            "average_cost": float(np.mean(costs)),
-            "median_cost": float(np.median(costs)),
-            "min_cost": float(np.min(costs)),
-            "max_cost": float(np.max(costs)),
-            "p95_cost": float(np.percentile(costs, 95)),
-            "avg_dropped_requests": float(np.mean(dropped)),
-            "max_dropped_requests": float(np.max(dropped)),
-            "avg_servers_used": float(np.mean(avg_servers)),
-            "max_servers_required": int(np.max(max_servers)),
-            "avg_utilization": float(np.mean(utilizations)),
-            "system_failure_rate": float(np.mean(system_failures)),
+            "total_completed": len(completed),
+            "total_dropped": len(dropped),
+            "throughput_req_per_sec": float(throughput),
+            "overall_utilization_pct": float(overall_utilization * 100),
+            # Latency Metrics
+            "avg_latency": float(np.mean(latencies)),
+            "p50_latency": float(np.median(latencies)),
+            "p95_latency": float(np.percentile(latencies, 95)),
+            "p99_latency": float(np.percentile(latencies, 99)),
+            "max_latency": float(np.max(latencies)),
+            # Waiting Time Metrics
+            "avg_waiting_time": float(np.mean(waiting_times)),
+            "p95_waiting_time": float(np.percentile(waiting_times, 95)),
+            # Service Processing Metrics
+            "avg_service_time": float(np.mean(service_times)),
+            # Queue Metrics
+            "max_queue_depth": queue.max_depth,
+            "total_enqueued": queue.total_enqueued,
+            "per_server_stats": per_server_stats,
         }
